@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Users, UserCheck, FileText,
-  ClipboardList, UserCog, MapPin, Settings, X, Calendar, ShieldCheck
+  ClipboardList, MapPin, Settings, X, Calendar, ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { LogoBadge } from '../Logo'
@@ -17,7 +17,6 @@ const NAV_GROUPS = [
       { label: 'Certification', icon: FileText, to: '/admin/certification' },
       { label: 'Online Requests', icon: ClipboardList, to: '/admin/requests' },
       { label: 'Verify Accounts', icon: ShieldCheck, to: '/admin/verify-accounts' },
-      { label: 'Accounts', icon: UserCog, to: '/admin/accounts' },
     ],
   },
   {

@@ -13,7 +13,8 @@ import SuperAdminDashboard from './pages/superadmin/Dashboard'
 import Barangays from './pages/superadmin/Barangays'
 import AllResidents from './pages/superadmin/AllResidents'
 import SuperAdminAccounts from './pages/superadmin/Accounts'
-import SuperAdminSettings from './pages/superadmin/Settings'
+import SuperAdminProfile from './pages/superadmin/Profile'
+import AuditLogs from './pages/superadmin/AuditLogs'
 
 // Admin layout + pages
 import DashboardLayout from './layouts/DashboardLayout'
@@ -55,7 +56,8 @@ export default function App() {
             <Route path="barangays" element={<Barangays />} />
             <Route path="residents" element={<AllResidents />} />
             <Route path="accounts"  element={<SuperAdminAccounts />} />
-            <Route path="settings"  element={<SuperAdminSettings />} />
+            <Route path="profile"   element={<SuperAdminProfile />} />
+            <Route path="audit-logs" element={<AuditLogs />} />
           </Route>
 
           {/* Barangay Admin */}

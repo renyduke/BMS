@@ -1,20 +1,22 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Plus, Users, FileText, Eye, Edit2, X, User } from 'lucide-react'
+import { Search, Plus, Users, Printer, Eye, Edit2, X, User, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import ResidentRegistrationModal from '../../components/admin/ResidentRegistrationModal'
 
 export default function Residents() {
-  const { profile } = useAuth()
-  const [rows, setRows]         = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [search, setSearch]     = useState('')
-  const [perPage, setPerPage]   = useState(10)
-  const [page, setPage]         = useState(1)
+  const { profile, barangay } = useAuth()
+  const [rows, setRows]           = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState('')
+  const [perPage, setPerPage]     = useState(10)
+  const [page, setPage]           = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
-  const [viewResident, setViewResident] = useState(null)
-  const [editResident, setEditResident] = useState(null)
+  const [viewResident, setViewResident]   = useState(null)
+  const [editResident, setEditResident]   = useState(null)
+  const [deleteTarget, setDeleteTarget]   = useState(null)   // resident to confirm-delete
+  const [deleting, setDeleting]           = useState(false)
 
   async function load() {
     setLoading(true)
@@ -50,7 +52,7 @@ export default function Residents() {
     const last  = r.lastname  ?? ''
     const first = r.firstname ?? ''
     const mid   = r.middlename ?? ''
-    return `${last},${first}${mid ? ' ' + mid : ''}`
+    return `${last}, ${first}${mid ? ' ' + mid : ''}`
   }
 
   function formatDate(d) {
@@ -60,20 +62,198 @@ export default function Residents() {
       ' ' + dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
   }
 
+  // ── Delete resident ──────────────────────────────────────────────────────
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const { error } = await supabase
+        .from('residents')
+        .delete()
+        .eq('id', deleteTarget.id)
+      if (!error) {
+        setRows(prev => prev.filter(r => r.id !== deleteTarget.id))
+      }
+    } catch (_) { /* silent */ }
+    finally {
+      setDeleting(false)
+      setDeleteTarget(null)
+    }
+  }
+
+  // ── Generate / Print List ────────────────────────────────────────────────
   function handleGenerateList() {
-    const rows2 = filtered
-    const headers = ['Name', 'Gender', 'Civil Status', 'Purok', 'Contact Number', 'Date Registered']
-    const csvRows = [
-      headers.join(','),
-      ...rows2.map(r => [
-        formatName(r), r.gender ?? '', r.civil_status ?? '', r.purok ?? '', r.contact ?? '', formatDate(r.created_at)
-      ].map(v => `"${v}"`).join(','))
-    ]
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' })
-    const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = 'residents.csv'; a.click()
-    URL.revokeObjectURL(url)
+    const barangayName = barangay?.name ?? 'Calatrava'
+    const municipality = 'Calatrava'
+    const province     = 'Negros Occidental'
+    const logoSrc      = `${window.location.origin}/calatrava.png`
+    const year         = new Date().getFullYear()
+    const total        = filtered.length
+
+    const tableRows = filtered.map((r, idx) => `
+      <tr>
+        <td>${idx + 1}</td>
+        <td>${formatName(r)}</td>
+        <td>${r.gender ?? '—'}</td>
+        <td>${r.civil_status ?? '—'}</td>
+        <td>${r.purok ? 'Purok ' + r.purok : '—'}</td>
+        <td>${r.contact ?? '—'}</td>
+      </tr>`).join('')
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Residents List – Barangay ${barangayName}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Times New Roman', serif;
+      font-size: 12pt;
+      color: #111;
+      padding: 30px 40px;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .header img {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+    }
+    .header-center {
+      text-align: center;
+      flex: 1;
+      padding: 0 16px;
+      line-height: 1.5;
+    }
+    .header-center .republic {
+      font-size: 11pt;
+    }
+    .header-center .province {
+      font-size: 11pt;
+      font-weight: bold;
+    }
+    .header-center .municipality {
+      font-size: 11pt;
+      font-weight: bold;
+    }
+    .header-center .barangay {
+      font-size: 14pt;
+      font-weight: bold;
+      font-style: italic;
+    }
+
+    hr { border: none; border-top: 2px solid #111; margin: 6px 0; }
+    hr.thin { border-top: 1px solid #555; margin: 4px 0; }
+
+    /* ── Sub-title block ── */
+    .doc-title {
+      margin: 14px 0 4px;
+      font-size: 11pt;
+    }
+    .doc-title .label { font-weight: bold; }
+
+    .total-line {
+      font-size: 11pt;
+      margin-bottom: 10px;
+    }
+
+    /* ── Table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11pt;
+    }
+    thead tr {
+      border-bottom: 1.5px solid #111;
+      border-top: 1.5px solid #111;
+    }
+    thead th {
+      padding: 5px 8px;
+      text-align: left;
+      font-weight: bold;
+    }
+    tbody td {
+      padding: 4px 8px;
+      border-bottom: 0.5px solid #ccc;
+    }
+    tbody tr:last-child td { border-bottom: 1.5px solid #111; }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 30px;
+      font-size: 10pt;
+      text-align: center;
+      color: #555;
+    }
+
+    @media print {
+      body { padding: 10mm 15mm; }
+      @page { size: A4 portrait; margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header with dual logos -->
+  <div class="header">
+    <img src="${logoSrc}" alt="Barangay Logo" onerror="this.style.display='none'" />
+    <div class="header-center">
+      <div class="republic">Republic of the Philippines</div>
+      <div class="province">PROVINCE OF ${province.toUpperCase()}</div>
+      <div class="municipality">Municipality of ${municipality.toUpperCase()}</div>
+      <div class="barangay">Barangay ${barangayName}</div>
+    </div>
+    <img src="${logoSrc}" alt="Municipal Logo" onerror="this.style.display='none'" />
+  </div>
+
+  <hr />
+  <hr class="thin" />
+
+  <!-- Document title block -->
+  <div class="doc-title">
+    <span class="label">Residents List</span><br/>
+    <span>Issued of Year: ${year}</span>
+  </div>
+
+  <div class="total-line">Total: ${total}</div>
+
+  <!-- Table -->
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>Gender</th>
+        <th>Civil Status</th>
+        <th>Purok</th>
+        <th>Contact Number</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${tableRows || '<tr><td colspan="6" style="text-align:center;padding:12px;">No records found.</td></tr>'}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    Copyright &copy; Barangay ${barangayName} ${year}
+  </div>
+
+  <script>window.onload = function(){ window.print(); }<\/script>
+</body>
+</html>`
+
+    const win = window.open('', '_blank')
+    if (win) {
+      win.document.write(html)
+      win.document.close()
+    }
   }
 
   return (
@@ -88,7 +268,7 @@ export default function Residents() {
         {/* Main card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
 
-          {/* Card header — "Residents Section" + buttons */}
+          {/* Card header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-wrap gap-3">
             <div className="flex items-center gap-2">
               <Users size={16} className="text-gray-600" />
@@ -105,7 +285,7 @@ export default function Residents() {
                 onClick={handleGenerateList}
                 className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-xl transition-colors shadow-sm"
               >
-                <FileText size={13} />Generate List
+                <Printer size={13} />Generate List
               </button>
             </div>
           </div>
@@ -167,12 +347,10 @@ export default function Residents() {
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
                     className="hover:bg-blue-50/20 transition-colors">
 
-                    {/* Name — Last,First Middle */}
                     <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
                       {formatName(r)}
                     </td>
 
-                    {/* Gender — colored badge matching photo */}
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-bold ${
                         r.gender === 'Male'
@@ -190,7 +368,7 @@ export default function Residents() {
                       {formatDate(r.created_at)}
                     </td>
 
-                    {/* Action — two icon buttons matching photo */}
+                    {/* Action buttons: View | Edit | Delete */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <button
@@ -205,6 +383,12 @@ export default function Residents() {
                           className="w-7 h-7 rounded-lg bg-green-500 hover:bg-green-600 text-white flex items-center justify-center transition-colors">
                           <Edit2 size={12} />
                         </button>
+                        <button
+                          onClick={() => setDeleteTarget(r)}
+                          title="Delete"
+                          className="w-7 h-7 rounded-lg bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors">
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </td>
                   </motion.tr>
@@ -213,7 +397,7 @@ export default function Residents() {
             </table>
           </div>
 
-          {/* Footer — showing X to Y of Z entries */}
+          {/* Footer — pagination */}
           <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
             <span>
               Showing {filtered.length === 0 ? 0 : (page - 1) * perPage + 1} to {Math.min(page * perPage, filtered.length)} of {filtered.length} entries
@@ -234,7 +418,7 @@ export default function Residents() {
         </div>
       </div>
 
-      {/* Add / Edit Resident Modal */}
+      {/* ── Add / Edit Resident Modal ── */}
       <ResidentRegistrationModal
         open={modalOpen}
         initial={editResident}
@@ -242,20 +426,58 @@ export default function Residents() {
         onSaved={() => { load(); setModalOpen(false); setEditResident(null) }}
       />
 
-      {/* View Resident Modal */}
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+          >
+            <div className="flex flex-col items-center gap-3 text-center">
+              <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
+                <Trash2 size={26} className="text-red-500" />
+              </div>
+              <h3 className="text-base font-bold text-gray-800">Delete Resident</h3>
+              <p className="text-sm text-gray-500">
+                Are you sure you want to delete{' '}
+                <span className="font-semibold text-gray-800">{formatName(deleteTarget)}</span>?
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="flex-1 py-2.5 text-sm font-semibold bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="flex-1 py-2.5 text-sm font-semibold bg-red-500 hover:bg-red-600 text-white rounded-xl transition-colors disabled:opacity-60"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ── View Resident Modal ── */}
       {viewResident && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden my-4">
-            
-            {/* Header section with photo overlay */}
+
             <div className="relative h-32 bg-gradient-to-r from-blue-600 to-blue-400 flex-shrink-0">
-              <button onClick={() => setViewResident(null)} 
+              <button onClick={() => setViewResident(null)}
                 className="absolute top-4 right-4 p-1.5 rounded-xl bg-black/20 hover:bg-black/30 text-white transition-colors" title="Close">
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="px-6 pb-6 pt-0 relative">
               <div className="flex flex-col sm:flex-row gap-5 items-start sm:items-end -mt-12 sm:-mt-16 mb-6">
                 <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-2xl border-4 border-white shadow-md bg-white overflow-hidden flex-shrink-0">
@@ -277,10 +499,7 @@ export default function Residents() {
                 </div>
               </div>
 
-              {/* Data Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* Personal Info */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide border-b pb-2">Personal Information</h3>
                   <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
@@ -292,7 +511,7 @@ export default function Residents() {
                     <div><p className="text-xs text-gray-500 font-medium">Occupation</p><p className="font-semibold text-gray-800">{viewResident.occupation || '—'}</p></div>
                   </div>
 
-                  <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide border-b pb-2 pt-2">Address & Contact</h3>
+                  <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide border-b pb-2 pt-2">Address &amp; Contact</h3>
                   <div className="grid grid-cols-1 gap-y-4 text-sm">
                     <div><p className="text-xs text-gray-500 font-medium">Complete Address</p><p className="font-semibold text-gray-800">{viewResident.address || '—'}</p></div>
                     <div className="grid grid-cols-2 gap-x-2">
@@ -302,7 +521,6 @@ export default function Residents() {
                   </div>
                 </div>
 
-                {/* Other Info & Emergency */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide border-b pb-2">Other Details</h3>
                   <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
@@ -328,10 +546,9 @@ export default function Residents() {
                     </div>
                   </div>
                 </div>
-
               </div>
             </div>
-            
+
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end">
               <button onClick={() => setViewResident(null)}
                 className="px-6 py-2.5 text-sm font-semibold bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl transition-colors shadow-sm">

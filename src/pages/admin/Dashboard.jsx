@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import OfficialsWidget from '../../components/OfficialsWidget'
+import OfficialsOrgChart from '../../components/admin/OfficialsOrgChart'
 
 function StatCard({ label, value, viewColor, loading, onClick }) {
   return (
@@ -168,6 +169,23 @@ export default function AdminDashboard() {
             </div>
             <div className="p-4">
               <OfficialsWidget barangayId={profile?.barangay_id} compact={false} />
+            </div>
+          </div>
+
+          {/* Organizational Chart */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-indigo-500">
+                  <rect x="8" y="2" width="8" height="4" rx="1"/><rect x="1" y="16" width="8" height="4" rx="1"/><rect x="15" y="16" width="8" height="4" rx="1"/>
+                  <path d="M12 6v4M12 10H4v6M12 10h8v6"/>
+                </svg>
+                <h3 className="text-sm font-bold text-gray-700">Organizational Chart</h3>
+              </div>
+              <a href="/admin/officials" className="text-xs text-indigo-600 hover:underline font-medium">Manage →</a>
+            </div>
+            <div className="p-5">
+              <OfficialsOrgChart barangayId={profile?.barangay_id} />
             </div>
           </div>
         </div>

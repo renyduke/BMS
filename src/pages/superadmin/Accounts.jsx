@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Shield, User, Crown, Trash2, Plus, X } from 'lucide-react'
+import { Search, Shield, User, Crown, Trash2, Plus, X, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
@@ -24,6 +24,15 @@ export default function SuperAdminAccounts() {
   const [search, setSearch] = useState('')
   const [filterRole, setFilterRole] = useState('all')
   const [deleting, setDeleting] = useState(null)
+  const [confirmDialog, setConfirmDialog] = useState(null)
+
+  function showConfirm({ message, subtext, onConfirm }) {
+    setConfirmDialog({ message, subtext, onConfirm })
+  }
+
+  function closeConfirm() {
+    setConfirmDialog(null)
+  }
   
   const [isAddingUser, setIsAddingUser] = useState(false)
   const [addForm, setAddForm] = useState({ firstname: '', lastname: '', email: '', password: '', role: 'admin', barangay_id: '' })
@@ -50,18 +59,29 @@ export default function SuperAdminAccounts() {
     await load()
   }
 
-  async function handleDelete(id, email) {
-    if (!window.confirm(`Are you sure you want to delete the account for ${email}? This action cannot be undone.`)) return
-    setDeleting(id)
-    try {
-      const { error } = await supabase.from('profiles').delete().eq('id', id)
-      if (error) throw error
-      setAccounts(prev => prev.filter(a => a.id !== id))
-    } catch (err) {
-      alert(err.message || 'Failed to delete account')
-    } finally {
-      setDeleting(null)
-    }
+  function handleDelete(id, email, name) {
+    showConfirm({
+      message: `Delete account for ${name}?`,
+      subtext: `This will permanently remove ${email} and cannot be undone.`,
+      onConfirm: async () => {
+        closeConfirm()
+        setDeleting(id)
+        try {
+          const { error } = await supabase.from('profiles').delete().eq('id', id)
+          if (error) throw error
+          setAccounts(prev => prev.filter(a => a.id !== id))
+        } catch (err) {
+          showConfirm({
+            message: 'Failed to delete account',
+            subtext: err.message || 'An unexpected error occurred.',
+            onConfirm: closeConfirm,
+            errorOnly: true,
+          })
+        } finally {
+          setDeleting(null)
+        }
+      }
+    })
   }
 
   async function handleAddUser(e) {
@@ -89,7 +109,12 @@ export default function SuperAdminAccounts() {
         role: addForm.role
       })
       
-      alert('User created successfully! Note: As a security measure, you may have been logged out. Please log back in as Super Admin if necessary.')
+      showConfirm({
+        message: 'User created successfully!',
+        subtext: 'Note: As a security measure, you may have been logged out. Please log back in as Super Admin if necessary.',
+        onConfirm: closeConfirm,
+        errorOnly: true,
+      })
       setIsAddingUser(false)
       setAddForm({ firstname: '', lastname: '', email: '', password: '', role: 'admin', barangay_id: '' })
       await load()
@@ -192,7 +217,7 @@ export default function SuperAdminAccounts() {
                     </td>
                     <td className="px-5 py-3">
                       <button
-                        onClick={() => handleDelete(a.id, a.email)}
+                        onClick={() => handleDelete(a.id, a.email, `${a.firstname} ${a.lastname}`)}
                         disabled={deleting === a.id}
                         className="p-1.5 rounded-lg hover:bg-red-50 text-red-500 transition-colors disabled:opacity-50"
                         title="Delete Account"
@@ -292,6 +317,53 @@ export default function SuperAdminAccounts() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Confirm Dialog */}
+      <AnimatePresence>
+        {confirmDialog && (
+          <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 8 }}
+              transition={{ duration: 0.18 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+            >
+              <div className="flex items-start gap-4 mb-5">
+                <div className="w-11 h-11 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle size={22} className="text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-800 leading-snug">{confirmDialog.message}</h3>
+                  {confirmDialog.subtext && (
+                    <p className="text-sm text-gray-500 mt-1">{confirmDialog.subtext}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                {!confirmDialog.errorOnly && (
+                  <button
+                    onClick={closeConfirm}
+                    className="flex-1 py-2.5 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  onClick={confirmDialog.onConfirm}
+                  className={`flex-1 py-2.5 text-sm font-semibold text-white rounded-xl transition-colors ${
+                    confirmDialog.errorOnly
+                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {confirmDialog.errorOnly ? 'OK' : 'Yes, Delete'}
+                </button>
               </div>
             </motion.div>
           </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, Edit2, ToggleLeft, ToggleRight, X, Save, MapPin, Shield, Mail, User, Key } from 'lucide-react'
+import { Plus, Search, Edit2, ToggleLeft, ToggleRight, X, Save, MapPin, Shield, Trash2, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 
@@ -40,6 +40,21 @@ export default function Barangays() {
   const [adminErrorsExisting, setAdminErrorsExisting] = useState({})
   const [savingAdminExisting, setSavingAdminExisting] = useState(false)
   const [errorAdminExisting, setErrorAdminExisting] = useState('')
+
+  // Delete Admin States
+  const [deletingAdmin, setDeletingAdmin] = useState(null)
+
+  // Custom confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState(null)
+  // confirmDialog shape: { message, subtext, onConfirm }
+
+  function showConfirm({ message, subtext, onConfirm }) {
+    setConfirmDialog({ message, subtext, onConfirm })
+  }
+
+  function closeConfirm() {
+    setConfirmDialog(null)
+  }
 
   async function load() {
     setLoading(true)
@@ -93,6 +108,44 @@ export default function Barangays() {
     setAdminErrorsExisting({})
     setErrorAdminExisting('')
     setShowAdminModal(true)
+  }
+
+  function handleDeleteAdmin(admin, barangayName) {
+    showConfirm({
+      message: `Remove ${admin.firstname} ${admin.lastname} as admin of ${barangayName}?`,
+      subtext: 'This will unlink them from the barangay and reset their role to resident.',
+      onConfirm: async () => {
+        closeConfirm()
+        setDeletingAdmin(admin.id)
+        try {
+          // Unlink from barangay and demote to resident.
+          // A direct DELETE on profiles is blocked by RLS when acting on another user's row.
+          // UPDATE is permitted by the superadmin policy.
+          const { error } = await supabase
+            .from('profiles')
+            .update({ barangay_id: null, role: 'resident' })
+            .eq('id', admin.id)
+          if (error) throw error
+
+          // Optimistically remove from local state so UI updates instantly
+          setBarangays(prev =>
+            prev.map(b => ({
+              ...b,
+              admins: (b.admins || []).filter(a => a.id !== admin.id),
+            }))
+          )
+        } catch (err) {
+          showConfirm({
+            message: 'Failed to remove admin',
+            subtext: err.message || 'An unexpected error occurred.',
+            onConfirm: closeConfirm,
+            errorOnly: true,
+          })
+        } finally {
+          setDeletingAdmin(null)
+        }
+      }
+    })
   }
 
   async function handleCreateAdminExisting() {
@@ -277,9 +330,24 @@ export default function Barangays() {
                 {b.admins && b.admins.length > 0 ? (
                   <div className="space-y-1">
                     {b.admins.map(admin => (
-                      <div key={admin.id} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-100">
+                      <div key={admin.id} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-100 gap-2">
                         <span className="font-semibold truncate">{admin.firstname} {admin.lastname}</span>
-                        <span className="text-gray-400 font-normal truncate max-w-[120px]" title={admin.email}>{admin.email}</span>
+                        <span className="text-gray-400 font-normal truncate max-w-[100px]" title={admin.email}>{admin.email}</span>
+                        <button
+                          onClick={() => handleDeleteAdmin(admin, b.name)}
+                          disabled={deletingAdmin === admin.id}
+                          className="ml-auto flex-shrink-0 p-1 rounded-md hover:bg-red-100 text-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                          title="Remove admin"
+                        >
+                          {deletingAdmin === admin.id ? (
+                            <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                            </svg>
+                          ) : (
+                            <Trash2 size={12} />
+                          )}
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -511,6 +579,53 @@ export default function Barangays() {
                     <Save size={15} />
                   )}
                   {savingAdminExisting ? 'Creating…' : 'Create Admin'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Confirm Dialog */}
+      <AnimatePresence>
+        {confirmDialog && (
+          <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 8 }}
+              transition={{ duration: 0.18 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+            >
+              <div className="flex items-start gap-4 mb-5">
+                <div className="w-11 h-11 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle size={22} className="text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-800 leading-snug">{confirmDialog.message}</h3>
+                  {confirmDialog.subtext && (
+                    <p className="text-sm text-gray-500 mt-1">{confirmDialog.subtext}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                {!confirmDialog.errorOnly && (
+                  <button
+                    onClick={closeConfirm}
+                    className="flex-1 py-2.5 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  onClick={confirmDialog.onConfirm}
+                  className={`flex-1 py-2.5 text-sm font-semibold text-white rounded-xl transition-colors ${
+                    confirmDialog.errorOnly
+                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {confirmDialog.errorOnly ? 'OK' : 'Yes, Remove'}
                 </button>
               </div>
             </motion.div>

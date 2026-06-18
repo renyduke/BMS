@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Menu, Bell, Search, ChevronDown, LogOut, User, Users, ClipboardList, X } from 'lucide-react'
+import { Menu, Bell, Search, ChevronDown, LogOut, User, Users, ClipboardList, X, RefreshCw, CheckCheck } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -235,6 +235,24 @@ export default function Header({ onMenuClick }) {
   const displayName = profile ? `${profile.firstname} ${profile.lastname}` : 'Admin'
 
   const [notifications, setNotifications] = useState([])
+  const [refreshing, setRefreshing]       = useState(false)
+
+  // persist read IDs in localStorage
+  const STORAGE_KEY = 'admin_notif_read_ids'
+  function getReadIds() {
+    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')) }
+    catch { return new Set() }
+  }
+  const [readIds, setReadIds] = useState(getReadIds)
+
+  function markAllRead() {
+    const ids = new Set(notifications.map(n => n.id))
+    const merged = new Set([...readIds, ...ids])
+    setReadIds(merged)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...merged]))
+  }
+
+  const unreadCount = notifications.filter(n => !readIds.has(n.id)).length
 
   const fetchNotifications = useCallback(async () => {
     if (!profile?.barangay_id) return
@@ -292,9 +310,15 @@ export default function Header({ onMenuClick }) {
 
   useEffect(() => {
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 60000) // update every minute
+    const interval = setInterval(fetchNotifications, 60000)
     return () => clearInterval(interval)
   }, [fetchNotifications])
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    await fetchNotifications()
+    setRefreshing(false)
+  }
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -354,10 +378,9 @@ export default function Header({ onMenuClick }) {
             aria-label="Notifications"
           >
             <Bell size={20}/>
-            {notifications.length > 0 && (
-              <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            {unreadCount > 0 && (
+              <span className="absolute top-0.5 right-0.5 min-w-[17px] h-[17px] px-0.5 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none">
+                {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
           </button>
@@ -371,8 +394,34 @@ export default function Header({ onMenuClick }) {
                 transition={{ duration:0.15 }}
                 className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
               >
-                <div className="px-4 py-3 border-b border-gray-100">
-                  <p className="font-semibold text-gray-800 text-sm">Notifications</p>
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <Bell size={14} className="text-indigo-500" />
+                    <p className="font-semibold text-gray-800 text-sm">Notifications</p>
+                    {unreadCount > 0 && (
+                      <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleRefresh}
+                      title="Refresh"
+                      className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+                    </button>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={markAllRead}
+                        title="Mark all as read"
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        <CheckCheck size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="divide-y divide-gray-50 max-h-80 overflow-y-auto">
                   {notifications.length === 0 ? (
@@ -380,28 +429,36 @@ export default function Header({ onMenuClick }) {
                       No new notifications
                     </div>
                   ) : (
-                    notifications.map(n => (
-                      <div key={n.id} 
-                        onClick={() => {
-                          setNotifOpen(false)
-                          navigate(n.type === 'request' ? '/admin/requests' : '/admin/verify-accounts')
-                        }}
-                        className={`px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors ${n.unread ? 'bg-blue-50/50' : ''}`}>
-                        <p className="text-sm text-gray-700">{n.text}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(n.time).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                    ))
+                    notifications.map(n => {
+                      const isRead = readIds.has(n.id)
+                      return (
+                        <div key={n.id}
+                          onClick={() => {
+                            // mark as read
+                            const merged = new Set([...readIds, n.id])
+                            setReadIds(merged)
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify([...merged]))
+                            setNotifOpen(false)
+                            navigate(n.type === 'request' ? '/admin/requests' : '/admin/verify-accounts')
+                          }}
+                          className={`px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors flex items-start gap-3 ${
+                            isRead ? 'opacity-60' : 'bg-blue-50/40'
+                          }`}
+                        >
+                          <div className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${isRead ? 'bg-transparent' : 'bg-blue-500'}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm ${isRead ? 'text-gray-500' : 'text-gray-700 font-medium'}`}>{n.text}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {new Date(n.time).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })
                   )}
                 </div>
-                <div className="px-4 py-2 border-t border-gray-100 bg-gray-50">
-                  <button 
-                    onClick={() => setNotifOpen(false)}
-                    className="text-xs text-blue-600 hover:underline font-medium"
-                  >
-                    View all notifications
-                  </button>
+                <div className="px-4 py-2 border-t border-gray-100 text-center">
+                  <p className="text-[11px] text-gray-400">Click a notification to mark it as read</p>
                 </div>
               </motion.div>
             )}
@@ -417,8 +474,11 @@ export default function Header({ onMenuClick }) {
             }}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-gray-100 transition-colors"
           >
-            <div className="w-8 h-8 rounded-full bg-blue-700 text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
-              {displayName.charAt(0).toUpperCase()}
+            <div className="w-8 h-8 rounded-full overflow-hidden bg-blue-700 text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
+              {profile?.avatar_url
+                ? <img src={profile.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+                : displayName.charAt(0).toUpperCase()
+              }
             </div>
             <div className="hidden sm:block text-left">
               <p className="text-sm font-semibold text-gray-800 leading-tight">{displayName}</p>
@@ -436,10 +496,6 @@ export default function Header({ onMenuClick }) {
                 transition={{ duration:0.15 }}
                 className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
               >
-                <div className="px-4 py-3 border-b border-gray-100">
-                  <p className="text-sm font-semibold text-gray-800">{displayName}</p>
-                  <p className="text-xs text-gray-400">{profile?.email}</p>
-                </div>
                 <div className="p-1">
                   <button 
                     onClick={() => { 

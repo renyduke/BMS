@@ -172,11 +172,6 @@ function CertRequestForm({ cert, profile, onBack, onSuccess }) {
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
         <h2 className="text-xl font-bold text-gray-800 text-center mb-6">{cert.label}</h2>
 
-        <div className="bg-gray-50 rounded-xl px-4 py-2.5 mb-5 flex gap-6 text-xs text-gray-500">
-          <span>Fee: <strong className="text-gray-700">{cert.fee}</strong></span>
-          <span>Processing Time: <strong className="text-gray-700">{cert.days}</strong></span>
-        </div>
-
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-2.5 mb-4">
             {error}
@@ -205,7 +200,16 @@ function CertRequestForm({ cert, profile, onBack, onSuccess }) {
               </Select>
             </Field>
             <Field label="Contact Number" required>
-              <Input value={form.contact} onChange={set('contact')} placeholder="09XXXXXXXXX" />
+              <Input
+                value={form.contact}
+                onChange={e => {
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 11)
+                  setForm(p => ({ ...p, contact: digits }))
+                }}
+                placeholder="09XXXXXXXXX"
+                maxLength={11}
+                inputMode="numeric"
+              />
             </Field>
           </div>
 
@@ -220,7 +224,11 @@ function CertRequestForm({ cert, profile, onBack, onSuccess }) {
             <Field label="Purpose" required>
               <Input
                 value={form.purpose}
-                onChange={set('purpose')}
+                onChange={e => {
+                  const val = e.target.value
+                  const capitalized = val.length > 0 ? val.charAt(0).toUpperCase() + val.slice(1) : val
+                  setForm(p => ({ ...p, purpose: capitalized }))
+                }}
                 placeholder="Employment / School…"
               />
             </Field>
@@ -311,20 +319,16 @@ export default function Certificates() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {CERTS.map(({ label, icon: Icon, color, border, fee, days }, i) => (
+        {CERTS.map(({ label, icon: Icon, color, border }, i) => (
           <motion.div key={label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.07 }} whileHover={{ scale: 1.02, y: -2 }}
             className={`bg-white rounded-2xl border ${border} shadow-sm p-5 hover:shadow-md transition-all`}>
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${color}`}>
               <Icon size={22} />
             </div>
-            <h3 className="font-bold text-gray-800 text-sm mb-1">{label}</h3>
-            <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
-              <span>Fee: <strong className="text-gray-700">{fee}</strong></span>
-              <span>Processing: <strong className="text-gray-700">{days}</strong></span>
-            </div>
+            <h3 className="font-bold text-gray-800 text-sm mb-4">{label}</h3>
             <button
-              onClick={() => handleRequest({ label, fee, days })}
+              onClick={() => handleRequest({ label })}
               className="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors">
               <Plus size={13} />Request Now
             </button>

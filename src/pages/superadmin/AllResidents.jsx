@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { Search, Filter, Trash2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Search, Filter, Trash2, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 const STATUS_STYLES = {
@@ -19,22 +19,39 @@ export default function AllResidents() {
   const [filterBrgy, setFilterBrgy] = useState('all')
   const [page, setPage] = useState(1)
   const [deleting, setDeleting] = useState(null)
+  const [confirmDialog, setConfirmDialog] = useState(null)
 
-  async function handleDelete(id, name) {
-    if (!window.confirm(`Are you sure you want to delete the resident "${name}"? This action cannot be undone.`)) {
-      return
-    }
-    
-    setDeleting(id)
-    try {
-      const { error } = await supabase.from('residents').delete().eq('id', id)
-      if (error) throw error
-      setRows(prev => prev.filter(r => r.id !== id))
-    } catch (err) {
-      alert(err.message || 'Failed to delete resident')
-    } finally {
-      setDeleting(null)
-    }
+  function showConfirm({ message, subtext, onConfirm, errorOnly }) {
+    setConfirmDialog({ message, subtext, onConfirm, errorOnly })
+  }
+
+  function closeConfirm() {
+    setConfirmDialog(null)
+  }
+
+  function handleDelete(id, name) {
+    showConfirm({
+      message: `Delete resident "${name}"?`,
+      subtext: 'This will permanently remove this resident record and cannot be undone.',
+      onConfirm: async () => {
+        closeConfirm()
+        setDeleting(id)
+        try {
+          const { error } = await supabase.from('residents').delete().eq('id', id)
+          if (error) throw error
+          setRows(prev => prev.filter(r => r.id !== id))
+        } catch (err) {
+          showConfirm({
+            message: 'Failed to delete resident',
+            subtext: err.message || 'An unexpected error occurred.',
+            onConfirm: closeConfirm,
+            errorOnly: true,
+          })
+        } finally {
+          setDeleting(null)
+        }
+      }
+    })
   }
 
   useEffect(() => {
@@ -164,6 +181,52 @@ export default function AllResidents() {
           </div>
         </div>
       </motion.div>
+      {/* Custom Confirm Dialog */}
+      <AnimatePresence>
+        {confirmDialog && (
+          <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 8 }}
+              transition={{ duration: 0.18 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+            >
+              <div className="flex items-start gap-4 mb-5">
+                <div className="w-11 h-11 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle size={22} className="text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-800 leading-snug">{confirmDialog.message}</h3>
+                  {confirmDialog.subtext && (
+                    <p className="text-sm text-gray-500 mt-1">{confirmDialog.subtext}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                {!confirmDialog.errorOnly && (
+                  <button
+                    onClick={closeConfirm}
+                    className="flex-1 py-2.5 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  onClick={confirmDialog.onConfirm}
+                  className={`flex-1 py-2.5 text-sm font-semibold text-white rounded-xl transition-colors ${
+                    confirmDialog.errorOnly
+                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {confirmDialog.errorOnly ? 'OK' : 'Yes, Delete'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

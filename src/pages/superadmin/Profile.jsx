@@ -1,20 +1,20 @@
 import { useState, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
-  User, Mail, MapPin, Calendar, Shield, Edit3, Save, X,
-  CheckCircle, Loader, Camera,
+  User, Mail, Calendar, Shield, KeyRound, CheckCircle,
+  Loader, Eye, EyeOff, Edit3, Save, X, Camera,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 
 const BUCKET = 'avatars'
 
-export default function AdminProfile() {
-  const { profile, user, barangay, fetchProfile } = useAuth()
+export default function SuperAdminProfile() {
+  const { profile, user, fetchProfile } = useAuth()
 
   const displayName = profile
     ? `${profile.firstname || ''} ${profile.lastname || ''}`.trim()
-    : 'Admin'
+    : 'Super Admin'
 
   // ── avatar ────────────────────────────────────────────────────────────────
   const fileRef = useRef(null)
@@ -84,17 +84,46 @@ export default function AdminProfile() {
     }
   }
 
+  // ── password ──────────────────────────────────────────────────────────────
+  const [passForm, setPassForm]       = useState({ currentPass: '', newPass: '', confirmPass: '' })
+  const [passLoading, setPassLoading] = useState(false)
+  const [passError, setPassError]     = useState('')
+  const [passSuccess, setPassSuccess] = useState('')
+  const [showCurrent, setShowCurrent] = useState(false)
+  const [showNew, setShowNew]         = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+
+  async function handlePasswordChange(e) {
+    e.preventDefault()
+    setPassError(''); setPassSuccess('')
+    if (passForm.newPass.length < 6)                       { setPassError('New password must be at least 6 characters.'); return }
+    if (passForm.newPass !== passForm.confirmPass)         { setPassError('New passwords do not match.'); return }
+    setPassLoading(true)
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: user.email, password: passForm.currentPass })
+      if (signInError) { setPassError('Current password is incorrect.'); return }
+      const { error: updateError } = await supabase.auth.updateUser({ password: passForm.newPass })
+      if (updateError) throw updateError
+      setPassSuccess('Password updated successfully!')
+      setPassForm({ currentPass: '', newPass: '', confirmPass: '' })
+    } catch (err) {
+      setPassError(err.message || 'Failed to update password.')
+    } finally {
+      setPassLoading(false)
+    }
+  }
+
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
 
-      {/* page header */}
+      {/* ── page header (matches all sidebar pages) ── */}
       <div>
         <h1 className="text-xl font-bold text-gray-800">My Profile</h1>
         <p className="text-sm text-gray-500">Manage your account information and security</p>
       </div>
 
-      {/* identity card */}
+      {/* ── profile identity card ── */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
@@ -107,7 +136,7 @@ export default function AdminProfile() {
             <div className="w-20 h-20 rounded-2xl overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-2xl shadow-sm">
               {avatarUrl
                 ? <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
-                : displayName.charAt(0).toUpperCase() || 'A'
+                : displayName.charAt(0).toUpperCase() || 'S'
               }
             </div>
             <button
@@ -125,17 +154,17 @@ export default function AdminProfile() {
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
 
-          {/* name / role */}
+          {/* name / role / email */}
           <div className="flex-1 text-center sm:text-left">
             <h2 className="text-lg font-bold text-gray-800">{displayName}</h2>
             <p className="text-sm text-gray-400 mt-0.5">{profile?.email}</p>
-            <div className="flex items-center justify-center sm:justify-start gap-2 mt-2 flex-wrap">
+            <div className="flex items-center justify-center sm:justify-start gap-2 mt-2">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold">
-                <Shield size={11} /> Barangay Administrator
+                <Shield size={11} /> Super Administrator
               </span>
-              {barangay?.name && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold">
-                  <MapPin size={11} /> {barangay.name}
+              {profile?.created_at && (
+                <span className="text-xs text-gray-400">
+                  Member since {new Date(profile.created_at).toLocaleDateString('en-PH', { year: 'numeric', month: 'short' })}
                 </span>
               )}
             </div>
@@ -154,7 +183,7 @@ export default function AdminProfile() {
         </div>
       </motion.div>
 
-      {/* account information */}
+      {/* ── account information (view / edit) ── */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
@@ -187,12 +216,11 @@ export default function AdminProfile() {
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[
-                  { icon: <User size={13} className="text-gray-400" />,     label: 'First Name',        value: profile?.firstname },
-                  { icon: <User size={13} className="text-gray-400" />,     label: 'Last Name',         value: profile?.lastname },
-                  { icon: <Mail size={13} className="text-gray-400" />,     label: 'Email Address',     value: profile?.email },
-                  { icon: <User size={13} className="text-gray-400" />,     label: 'Username',          value: profile?.username ? `@${profile.username}` : '—' },
-                  { icon: <MapPin size={13} className="text-gray-400" />,   label: 'Assigned Barangay', value: barangay?.name },
-                  { icon: <Calendar size={13} className="text-gray-400" />, label: 'Account Created',   value: profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
+                  { icon: <User size={13} className="text-gray-400" />,     label: 'First Name',      value: profile?.firstname },
+                  { icon: <User size={13} className="text-gray-400" />,     label: 'Last Name',       value: profile?.lastname },
+                  { icon: <Mail size={13} className="text-gray-400" />,     label: 'Email Address',   value: profile?.email },
+                  { icon: <User size={13} className="text-gray-400" />,     label: 'Username',        value: profile?.username ? `@${profile.username}` : '—' },
+                  { icon: <Calendar size={13} className="text-gray-400" />, label: 'Account Created', value: profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
                 ].map(f => (
                   <div key={f.label} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
                     <div className="flex items-center gap-1.5 mb-1">
@@ -251,6 +279,72 @@ export default function AdminProfile() {
         </div>
       </motion.div>
 
+      {/* ── change password ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+      >
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+          <KeyRound size={15} className="text-indigo-500" />
+          <h3 className="text-sm font-bold text-gray-800">Change Password</h3>
+        </div>
+
+        <div className="p-5">
+          <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
+            {passError && (
+              <div className="bg-red-50 text-red-600 text-sm p-3 rounded-xl border border-red-100">{passError}</div>
+            )}
+            {passSuccess && (
+              <div className="bg-green-50 text-green-700 text-sm p-3 rounded-xl border border-green-100 flex items-center gap-2">
+                <CheckCircle size={14} className="flex-shrink-0" />{passSuccess}
+              </div>
+            )}
+
+            <PwField label="Current Password"     value={passForm.currentPass} show={showCurrent}
+              onToggle={() => setShowCurrent(v => !v)}
+              onChange={e => setPassForm(p => ({ ...p, currentPass: e.target.value }))}
+              placeholder="Enter current password" />
+            <PwField label="New Password"          value={passForm.newPass}     show={showNew}
+              onToggle={() => setShowNew(v => !v)}
+              onChange={e => setPassForm(p => ({ ...p, newPass: e.target.value }))}
+              placeholder="Enter new password" />
+            <PwField label="Confirm New Password"  value={passForm.confirmPass} show={showConfirm}
+              onToggle={() => setShowConfirm(v => !v)}
+              onChange={e => setPassForm(p => ({ ...p, confirmPass: e.target.value }))}
+              placeholder="Confirm new password" />
+
+            <button type="submit" disabled={passLoading}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-all shadow-sm">
+              {passLoading && <Loader size={14} className="animate-spin" />}
+              Update Password
+            </button>
+          </form>
+          <p className="mt-4 text-xs text-gray-400">Choose a strong password with at least 6 characters.</p>
+        </div>
+      </motion.div>
+
+    </div>
+  )
+}
+
+function PwField({ label, value, show, onToggle, onChange, placeholder }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+      <div className="relative">
+        <input
+          type={show ? 'text' : 'password'}
+          required value={value} onChange={onChange}
+          className="w-full px-4 py-2.5 pr-11 border border-gray-300 rounded-xl bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm text-gray-900 transition-all"
+          placeholder={placeholder}
+        />
+        <button type="button" onClick={onToggle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+          {show ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
     </div>
   )
 }
